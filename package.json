@@ -1,0 +1,30 @@
+{
+  "name": "bitrix24-callcenter-connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Устойчивая серверная интеграция колл-центра с Битрикс24 через входящий вебхук",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "smoke": "tsx smoke.ts",
+    "loadtest": "tsx loadtest.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@bitrix24/b24jssdk": "^2.0.0",
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Secrets — NEVER commit a real webhook secret
+.env
+.env.local
+*.env
+
+# Runtime data: durable queue WAL, dead-letter, idempotency store
+.data/
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
