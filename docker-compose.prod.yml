@@ -1,0 +1,32 @@
+# Прод-деплой коннектора на сервере convo-prod.
+# Контейнер подключается к внешней сети convo-prod_convo-net, чтобы его
+# по имени "b24-connector" видел Caddy-ингресс. TLS терминирует Caddy.
+#
+# На сервере рядом с этим файлом должен лежать .env с секретами:
+#   B24_HOOK=...
+#   B24_APPLICATION_TOKEN=...
+services:
+  b24-connector:
+    build: .
+    image: b24-connector:latest
+    container_name: b24-connector
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3000"
+      QUEUE_DATA_DIR: /data
+      LOG_LEVEL: info
+    volumes:
+      - b24-data:/data
+    networks:
+      - convo-net
+    expose:
+      - "3000"
+
+networks:
+  convo-net:
+    external: true
+    name: convo-prod_convo-net
+
+volumes:
+  b24-data:

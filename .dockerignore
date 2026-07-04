@@ -1,0 +1,11 @@
+node_modules
+.git
+.gitignore
+.data
+.env
+.env.*
+dist
+*.log
+.claude
+smoke.ts
+loadtest.ts
