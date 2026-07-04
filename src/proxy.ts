@@ -89,7 +89,7 @@ async function forwardOnce(
   contentType: string,
   body: Buffer,
 ): Promise<UpstreamResult> {
-  const target = `${config.b24Hook}${method}.json${query ? `?${query}` : ''}`
+  const target = `${config.proxy.upstreamHook}${method}.json${query ? `?${query}` : ''}`
   const bodyless = httpMethod === 'GET' || httpMethod === 'HEAD'
   const ac = new AbortController()
   const timer = setTimeout(() => ac.abort(), config.proxy.upstreamTimeoutMs)

@@ -40,10 +40,11 @@ function num(name: string, def: number): number {
 
 const tariff = (process.env.B24_TARIFF ?? 'default').trim().toLowerCase()
 const isEnterprise = tariff === 'enterprise'
+const b24Hook = req('B24_HOOK')
 
 export const config = {
   /** Полный URL входящего вебхука Битрикс24 (реальные креды живут только тут). */
-  b24Hook: req('B24_HOOK'),
+  b24Hook,
   /** application_token из тела события (для сверки входящих вебхуков). */
   appToken: (process.env.B24_APPLICATION_TOKEN ?? '').trim(),
   /** Порт Express-приёмника событий/прокси. */
@@ -64,6 +65,12 @@ export const config = {
   proxy: {
     /** Bearer/path API-ключ приложения. Пусто → прокси выключен. */
     appApiKey: (process.env.APP_API_KEY ?? '').trim(),
+    /**
+     * Апстрим-вебхук, КУДА прокси шлёт запросы. По умолчанию = B24_HOOK, но
+     * приложение (control-center) использует свой вебхук с иными скоупами —
+     * задай PROXY_B24_HOOK на его вебхук, чтобы права и поведение были 1:1.
+     */
+    upstreamHook: (process.env.PROXY_B24_HOOK ?? '').trim() || b24Hook,
     /** Leaky-bucket под лимиты Битрикса: refill/сек и ёмкость всплеска. */
     ratePerSec: num('PROXY_RATE_PER_SEC', isEnterprise ? 5 : 2),
     burst: num('PROXY_BURST', isEnterprise ? 250 : 50),
