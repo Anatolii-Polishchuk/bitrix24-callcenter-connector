@@ -9,6 +9,7 @@ import type { Express, Request, Response } from 'express'
 import { timingSafeEqual } from 'node:crypto'
 import { config } from '../config.js'
 import { log } from '../logger.js'
+import { createProxyRouter, proxyStats } from '../proxy.js'
 import type { DurableQueue } from '../queue.js'
 import type { B24EventPayload } from './handlers.js'
 
@@ -28,11 +29,24 @@ function tokenMatches(received: string | undefined): boolean {
 
 export function createServer(queue: DurableQueue): Express {
   const app = express()
+
+  // Governed-прокси Битрикса. Смонтирован ПЕРВЫМ и с собственным raw-парсером,
+  // чтобы глобальные json/urlencoded не трогали тело проксируемых запросов.
+  if (config.proxy.appApiKey) {
+    app.use('/px', createProxyRouter())
+    log.info('proxy.enabled', { ratePerSec: config.proxy.ratePerSec, burst: config.proxy.burst })
+  }
+
   app.use(express.urlencoded({ extended: true })) // события идут form-urlencoded
   app.use(express.json())
 
   app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'ok', queue: queue.stats(), ts: new Date().toISOString() })
+    res.json({
+      status: 'ok',
+      queue: queue.stats(),
+      proxy: config.proxy.appApiKey ? proxyStats() : 'disabled',
+      ts: new Date().toISOString(),
+    })
   })
 
   app.post('/webhook', (req: Request, res: Response) => {

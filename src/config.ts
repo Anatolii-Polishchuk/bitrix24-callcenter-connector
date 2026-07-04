@@ -38,15 +38,18 @@ function num(name: string, def: number): number {
   return n
 }
 
+const tariff = (process.env.B24_TARIFF ?? 'default').trim().toLowerCase()
+const isEnterprise = tariff === 'enterprise'
+
 export const config = {
-  /** Полный URL входящего вебхука Битрикс24. */
+  /** Полный URL входящего вебхука Битрикс24 (реальные креды живут только тут). */
   b24Hook: req('B24_HOOK'),
   /** application_token из тела события (для сверки входящих вебхуков). */
   appToken: (process.env.B24_APPLICATION_TOKEN ?? '').trim(),
-  /** Порт Express-приёмника событий. */
+  /** Порт Express-приёмника событий/прокси. */
   port: num('PORT', 3000),
   /** 'default' (2 req/s) | 'enterprise' (5 req/s). */
-  tariff: (process.env.B24_TARIFF ?? 'default').trim().toLowerCase(),
+  tariff,
   /** Ретраи временных ошибок REST (SDK). */
   maxRetries: num('B24_MAX_RETRIES', 3),
   retryDelayMs: num('B24_RETRY_DELAY_MS', 1000),
@@ -56,6 +59,23 @@ export const config = {
     concurrency: num('QUEUE_CONCURRENCY', 4),
     dataDir: (process.env.QUEUE_DATA_DIR ?? '.data').trim(),
     maxAttempts: num('QUEUE_MAX_ATTEMPTS', 5),
+  },
+  /** Governed-прокси Битрикса для внешних приложений (например control-center). */
+  proxy: {
+    /** Bearer/path API-ключ приложения. Пусто → прокси выключен. */
+    appApiKey: (process.env.APP_API_KEY ?? '').trim(),
+    /** Leaky-bucket под лимиты Битрикса: refill/сек и ёмкость всплеска. */
+    ratePerSec: num('PROXY_RATE_PER_SEC', isEnterprise ? 5 : 2),
+    burst: num('PROXY_BURST', isEnterprise ? 250 : 50),
+    /** Ретраи на 503/429/OVERLOAD (запрос отвергнут — повтор безопасен). */
+    maxRetries: num('PROXY_MAX_RETRIES', 6),
+    retryBaseMs: num('PROXY_RETRY_BASE_MS', 1000),
+    /** Короткий TTL-кэш идемпотентных *.list/*.get (мс). 0 — выключить. */
+    cacheTtlMs: num('PROXY_CACHE_TTL_MS', 15_000),
+    /** Таймаут одного апстрим-запроса к Битриксу (мс). Тяжёлый deal.list. */
+    upstreamTimeoutMs: num('PROXY_UPSTREAM_TIMEOUT_MS', 120_000),
+    /** Максимальный размер тела запроса. */
+    maxBodySize: (process.env.PROXY_MAX_BODY_SIZE ?? '4mb').trim(),
   },
 } as const
 
