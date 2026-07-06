@@ -8,6 +8,9 @@
 Построено на официальном SDK [`@bitrix24/b24jssdk`](https://github.com/bitrix24/b24jssdk)
 (v2), Node.js 20+/TypeScript, `express`, запуск через `tsx`.
 
+> 📘 **Как подключиться и тянуть данные (endpoints, ключи, REST-прокси, MCP, зеркало) —
+> полная справка: [`docs/INTEGRATION.md`](docs/INTEGRATION.md).** «Бах, подключил и работает».
+
 ---
 
 ## Почему интеграция не отваливается
