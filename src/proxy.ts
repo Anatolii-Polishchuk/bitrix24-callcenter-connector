@@ -44,13 +44,40 @@ setInterval(() => {
   for (const [k, v] of cache) if (v.expires <= now) cache.delete(k)
 }, 60_000).unref()
 
-function keyMatches(received: string): boolean {
-  const expected = config.proxy.appApiKey
-  if (!expected) return false
+/**
+ * Настроенные ключи. Общий бакет = реальный лимит Битрикса (2/50). Ключ
+ * аналитики получает ДОПОЛНИТЕЛЬНЫЙ под-лимит (напр. ≤1/s), поэтому тяжёлый
+ * full-pull физически не может занять больше своей доли — синку всегда остаётся
+ * окно. Разные ключи → раздельная наблюдаемость (лейбл) и отзыв.
+ */
+interface KeyEntry {
+  key: string
+  label: string
+  sub: TokenBucket | null
+}
+const keyList: KeyEntry[] = []
+if (config.proxy.appApiKey) {
+  keyList.push({ key: config.proxy.appApiKey, label: 'sync', sub: null })
+}
+if (config.proxy.analyticsKey) {
+  const rate = config.proxy.analyticsRatePerSec
+  keyList.push({
+    key: config.proxy.analyticsKey,
+    label: 'analytics',
+    sub: new TokenBucket(rate, Math.max(5, rate * 5)),
+  })
+}
+
+export type ResolvedKey = { label: string; sub: TokenBucket | null }
+
+/** Constant-time поиск ключа. Возвращает конфиг ключа или null. */
+function resolveKey(received: string): ResolvedKey | null {
   const a = Buffer.from(received)
-  const b = Buffer.from(expected)
-  if (a.length !== b.length) return false
-  return timingSafeEqual(a, b)
+  for (const k of keyList) {
+    const b = Buffer.from(k.key)
+    if (a.length === b.length && timingSafeEqual(a, b)) return { label: k.label, sub: k.sub }
+  }
+  return null
 }
 
 function cacheKey(method: string, query: string, body: Buffer): string {
@@ -117,17 +144,21 @@ async function governedForward(
   httpMethod: string,
   contentType: string,
   body: Buffer,
+  keyCfg: ResolvedKey,
 ): Promise<UpstreamResult> {
   const idempotent = IDEMPOTENT.test(method)
   const maxRetries = config.proxy.maxRetries
   for (let attempt = 0; ; attempt++) {
-    await bucket.acquire()
+    // Под-лимит ключа (напр. аналитика ≤1/s) — берётся ДО общего бакета,
+    // чтобы аналитика ждала на своём под-лимите, не занимая общие токены.
+    if (keyCfg.sub) await keyCfg.sub.acquire()
+    await bucket.acquire() // общий бакет = реальный лимит Битрикса
     try {
       const res = await forwardOnce(method, query, httpMethod, contentType, body)
       const decision = retryDecision(res.status, res.body.toString('utf8'))
       if (decision.retry && attempt < maxRetries) {
         const delay = decision.waitMs > 0 ? decision.waitMs : backoffDelay(attempt, config.proxy.retryBaseMs)
-        log.warn('proxy.retry', { method, attempt, code: decision.code, status: res.status, delay })
+        log.warn('proxy.retry', { key: keyCfg.label, method, attempt, code: decision.code, status: res.status, delay })
         await sleep(delay)
         continue
       }
@@ -136,7 +167,7 @@ async function governedForward(
       // Сетевая ошибка/таймаут: ретраим только идемпотентные (для записей — небезопасно).
       if (idempotent && attempt < maxRetries) {
         const delay = backoffDelay(attempt, config.proxy.retryBaseMs)
-        log.warn('proxy.network_retry', { method, attempt, err: String(err), delay })
+        log.warn('proxy.network_retry', { key: keyCfg.label, method, attempt, err: String(err), delay })
         await sleep(delay)
         continue
       }
@@ -151,11 +182,13 @@ export function createProxyRouter(): Router {
   router.use(express.raw({ type: () => true, limit: config.proxy.maxBodySize }))
 
   router.all('/:key/:method', async (req: Request, res: Response) => {
-    if (!keyMatches(req.params.key ?? '')) {
+    const keyCfg = resolveKey(req.params.key ?? '')
+    if (!keyCfg) {
       log.warn('proxy.unauthorized')
       res.status(401).json({ error: 'UNAUTHORIZED', error_description: 'invalid api key' })
       return
     }
+    res.set('x-b24proxy-key', keyCfg.label)
 
     const method = (req.params.method ?? '').replace(/\.json$/i, '')
     if (!method) {
@@ -181,7 +214,7 @@ export function createProxyRouter(): Router {
         let p = inflight.get(ck)
         const coalesced = Boolean(p)
         if (!p) {
-          p = governedForward(method, query, req.method, contentType, body)
+          p = governedForward(method, query, req.method, contentType, body, keyCfg)
           inflight.set(ck, p)
           void p.finally(() => inflight.delete(ck))
         }
@@ -196,7 +229,7 @@ export function createProxyRouter(): Router {
       }
 
       // Не-идемпотентные (записи): без кэша и дедупа.
-      const r = await governedForward(method, query, req.method, contentType, body)
+      const r = await governedForward(method, query, req.method, contentType, body, keyCfg)
       res.set('content-type', r.contentType)
       res.set('x-b24proxy', 'write')
       res.status(r.status).send(r.body)
@@ -209,6 +242,19 @@ export function createProxyRouter(): Router {
   return router
 }
 
-export function proxyStats(): { bucket: { tokens: number; capacity: number }; cache: number; inflight: number } {
-  return { bucket: bucket.stats(), cache: cache.size, inflight: inflight.size }
+export function proxyStats(): {
+  bucket: { tokens: number; capacity: number }
+  keys: string[]
+  analyticsSub: { tokens: number; capacity: number } | null
+  cache: number
+  inflight: number
+} {
+  const analytics = keyList.find((k) => k.label === 'analytics')
+  return {
+    bucket: bucket.stats(),
+    keys: keyList.map((k) => k.label),
+    analyticsSub: analytics?.sub ? analytics.sub.stats() : null,
+    cache: cache.size,
+    inflight: inflight.size,
+  }
 }

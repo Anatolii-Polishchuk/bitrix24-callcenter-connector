@@ -63,8 +63,12 @@ export const config = {
   },
   /** Governed-прокси Битрикса для внешних приложений (например control-center). */
   proxy: {
-    /** Bearer/path API-ключ приложения. Пусто → прокси выключен. */
+    /** Bearer/path API-ключ синка (полная доля общего бакета). Пусто → выключен. */
     appApiKey: (process.env.APP_API_KEY ?? '').trim(),
+    /** Отдельный ключ аналитики (тяжёлые full-pull) — под-лимит под общим бакетом. */
+    analyticsKey: (process.env.PROXY_ANALYTICS_KEY ?? '').trim(),
+    /** Под-лимит ключа аналитики (req/s), чтобы full-pull не душил синк. */
+    analyticsRatePerSec: num('PROXY_ANALYTICS_RATE_PER_SEC', 1),
     /**
      * Апстрим-вебхук, КУДА прокси шлёт запросы. По умолчанию = B24_HOOK, но
      * приложение (control-center) использует свой вебхук с иными скоупами —

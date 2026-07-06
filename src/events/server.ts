@@ -32,9 +32,14 @@ export function createServer(queue: DurableQueue): Express {
 
   // Governed-прокси Битрикса. Смонтирован ПЕРВЫМ и с собственным raw-парсером,
   // чтобы глобальные json/urlencoded не трогали тело проксируемых запросов.
-  if (config.proxy.appApiKey) {
+  if (config.proxy.appApiKey || config.proxy.analyticsKey) {
     app.use('/px', createProxyRouter())
-    log.info('proxy.enabled', { ratePerSec: config.proxy.ratePerSec, burst: config.proxy.burst })
+    log.info('proxy.enabled', {
+      ratePerSec: config.proxy.ratePerSec,
+      burst: config.proxy.burst,
+      keys: proxyStats().keys,
+      analyticsRatePerSec: config.proxy.analyticsRatePerSec,
+    })
   }
 
   app.use(express.urlencoded({ extended: true })) // события идут form-urlencoded
